@@ -1,102 +1,93 @@
-from collections import Counter
-from decimal import Decimal
+# recommender/utils.py
+import itertools, random
+from collections import Counter, defaultdict
 from django.utils import timezone
-from django.db.models import Count, Q
-from order.models import OrderItem
-from menu.models import MenuItem
+from django.db.models import Count, Avg, Q
+from menu.models  import MenuItem, Ingredient, Review
+from order.models import Order, OrderItem
 
-# History‑based (most‑ordered by the user)
-
-def recommend_items_for_user(user, top_n=5):
-    ordered_items = OrderItem.objects.filter(order__customer=user)
-    item_counts   = Counter(item.menu_item for item in ordered_items)
-
-    return [item for item, _ in item_counts.most_common(top_n)]
-
-
-# Globally popular items
-
-def get_popular_items(top_n=5):
-    top = (
-        OrderItem.objects
-        .values("menu_item")
-        .annotate(cnt=Count("id"))
-        .order_by("-cnt")[:top_n]
-    )
-    return [MenuItem.objects.get(id=row["menu_item"]) for row in top]
-
-
-# Time‑aware suggestions (breakfast / lunch / dinner)
-
-_MEAL_KEYWORDS = {
-    "breakfast": ["tea", "egg", "paratha"],
-    "lunch":     ["burger", "biryani", "rice"],
-    "dinner":    ["karahi", "kebab", "naan"],
+WEIGHTS = {
+    "history": 0.30,
+    "popular": 0.15,
+    "time":    0.15,
+    "content": 0.20,
+    "cluster": 0.10,
+    "basket":  0.10,
 }
 
-def current_meal_period():
-    hour = timezone.localtime().hour
-    if 6 <= hour < 11:
-        return "breakfast"
-    if 11 <= hour < 17:
-        return "lunch"
-    return "dinner"
+def history_scores(user):
+    ids = OrderItem.objects.filter(order__customer=user)\
+                           .values_list("menu_item_id", flat=True)
+    return Counter(ids)
 
-def get_time_based_items(user=None, top_n=5):
-    meal = current_meal_period()
-    keywords = _MEAL_KEYWORDS.get(meal, [])
+def popular_scores(top_k=20):
+    qs = (OrderItem.objects.values("menu_item_id")
+          .annotate(c=Count("id")).order_by("-c")[:top_k])
+    return {row["menu_item_id"]: top_k-i for i, row in enumerate(qs)}
+
+def time_scores():
+    now  = timezone.localtime()
+    hour = now.hour
     q = Q()
-    for kw in keywords:
-        q |= Q(name__icontains=kw)
-    items = MenuItem.objects.filter(q)[:top_n]
-    return list(items)
+    if hour < 12:
+        q |= Q(name__icontains="tea") | Q(name__icontains="paratha")
+    elif hour < 17:
+        q |= Q(name__icontains="biryani")
+    else:
+        q |= Q(name__icontains="karahi") | Q(name__icontains="kebab")
+    return {m.id: 1 for m in MenuItem.objects.filter(q)}
 
+def content_scores(user):
+    liked = Review.objects.filter(user=user, rating__gte=4)\
+                          .values_list("menu_item_id", flat=True)
+    ing   = Ingredient.objects.filter(
+              recipeingredient__recipe__menu_item_id__in=liked)
+    matches = MenuItem.objects.filter(recipe__ingredients__in=ing)\
+                              .exclude(id__in=liked)
+    return {m.id: 1 for m in matches}
 
-# Content‑based (ingredient overlap)
+def cluster_scores(user):
+    avg = Order.objects.filter(customer=user)\
+                       .aggregate(a=Avg("total_price"))["a"] or 0
+    if avg < 500:
+        qs = MenuItem.objects.filter(price__lt=400)
+    elif avg < 1000:
+        qs = MenuItem.objects.filter(price__gte=400, price__lt=800)
+    else:
+        qs = MenuItem.objects.filter(price__gte=800)
+    return {m.id: 1 for m in qs}
 
-def recommend_similar_items(menu_item, top_n=5):
-    try:
-        base_ing = set(menu_item.recipe.ingredients.all())
-    except:
-        return []
+# simple market-basket count kept in memory
+PAIR_FREQ = defaultdict(int)
+for order in Order.objects.prefetch_related("items"):
+    ids = [i.menu_item_id for i in order.items.all()]
+    for a, b in itertools.combinations(sorted(set(ids)), 2):
+        PAIR_FREQ[(a, b)] += 1
+def basket_scores():
+    c = Counter()
+    for (a, b), n in PAIR_FREQ.items():
+        c[a] += n
+        c[b] += n
+    return c
 
-    similarities = []
-    for item in MenuItem.objects.exclude(id=menu_item.id):
-        try:
-            other_ing = set(item.recipe.ingredients.all())
-            score = len(base_ing & other_ing)
-            if score:
-                similarities.append((item, score))
-        except:
-            continue
-
-    similarities.sort(key=lambda x: x[1], reverse=True)
-    return [itm for itm, _ in similarities[:top_n]]
-
-
-# Hybrid recommendation combining all strategies
-from django.contrib.auth import get_user_model
-def get_user_by_id(user_id):
-    User = get_user_model()
-    try:
-        return User.objects.get(id=user_id)
-    except User.DoesNotExist:
-        return None
-    
-    
 def hybrid_recommendation(user, top_n=5):
-    items = (
-        recommend_items_for_user(user, top_n)
-        + get_popular_items(top_n)
-        + get_time_based_items(user, top_n)
-    )
+    total = Counter()
+    funcs = [
+        (history_scores, WEIGHTS["history"]),
+        (popular_scores, WEIGHTS["popular"]),
+        (time_scores,    WEIGHTS["time"]),
+        (content_scores, WEIGHTS["content"]),
+        (cluster_scores, WEIGHTS["cluster"]),
+        (basket_scores,  WEIGHTS["basket"]),
+    ]
+    for fn, w in funcs:
+        part = fn(user) if fn is not basket_scores else fn()
+        for k, v in part.items():
+            total[k] += w * v
 
-    # uniqueness while preserving order
-    seen, unique = set(), []
-    for itm in items:
-        if itm.id not in seen:
-            unique.append(itm)
-            seen.add(itm.id)
-        if len(unique) >= top_n:
-            break
-    return unique
+    seen = set(OrderItem.objects.filter(order__customer=user)
+                             .values_list("menu_item_id", flat=True))
+    best = [i for i, _ in total.most_common() if i not in seen][:top_n]
+    when = " ".join(f"WHEN id={i} THEN {p}" for p, i in enumerate(best))
+    return list(MenuItem.objects.filter(id__in=best)
+                .extra(select={'_o': f'CASE {when} END'}).order_by('_o'))
