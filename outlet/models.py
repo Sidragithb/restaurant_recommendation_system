@@ -45,6 +45,8 @@ class Table(models.Model):
     outlet   = models.ForeignKey(Outlet, on_delete=models.CASCADE, related_name="tables")
     number   = models.PositiveIntegerField()
     qr_code  = models.ImageField(upload_to="qr_codes/", blank=True, null=True)
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
 
     class Meta:
         unique_together = ("outlet", "number")

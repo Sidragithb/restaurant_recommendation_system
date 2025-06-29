@@ -1,4 +1,3 @@
-# menu/models.py
 from django.db import models
 from django.core.validators import MinValueValidator, MaxValueValidator
 from django.core.exceptions import ValidationError
@@ -6,30 +5,31 @@ from django.conf import settings
 from django.utils import timezone
 from django.db.models import Avg, Count
 
-
 # ---------------------------------------------------------------------
 #  Category  (e.g. Starters, Main Course, Drinks)
 # ---------------------------------------------------------------------
 class Category(models.Model):
     name        = models.CharField(max_length=100, unique=True)
     description = models.TextField(blank=True)
+    created_at  = models.DateTimeField(auto_now_add=True)
+    updated_at  = models.DateTimeField(auto_now=True)
 
     def __str__(self):
         return self.name
-
 
 # ---------------------------------------------------------------------
 #  MenuItem  (one dish on the menu)
 # ---------------------------------------------------------------------
 class MenuItem(models.Model):
-    category    = models.ForeignKey(Category, on_delete=models.CASCADE)
-    name        = models.CharField(max_length=200)
-    description = models.TextField(blank=True)
-    image       = models.ImageField(upload_to="menu_images/", blank=True, null=True)
-    price       = models.DecimalField(max_digits=10, decimal_places=2, default=0)
+    category     = models.ForeignKey(Category, on_delete=models.CASCADE)
+    name         = models.CharField(max_length=200)
+    description  = models.TextField(blank=True)
+    image        = models.ImageField(upload_to="menu_images/", blank=True, null=True)
+    price        = models.DecimalField(max_digits=10, decimal_places=2, default=0)
     is_available = models.BooleanField(default=True)
+    created_at   = models.DateTimeField(auto_now_add=True)
+    updated_at   = models.DateTimeField(auto_now=True)
 
-    # ───────── Rating helpers ─────────
     @property
     def average_rating(self):
         return self.reviews.aggregate(avg=Avg("rating"))["avg"] or 0
@@ -41,39 +41,46 @@ class MenuItem(models.Model):
     def __str__(self):
         return self.name
 
-
-#  Ingredients, Recipe, RecipeIngredient (M2M through table)
-
-
+# ---------------------------------------------------------------------
+#  Ingredient
+# ---------------------------------------------------------------------
 class Ingredient(models.Model):
-    name = models.CharField(max_length=100, unique=True)
+    name        = models.CharField(max_length=100, unique=True)
+    created_at  = models.DateTimeField(auto_now_add=True)
+    updated_at  = models.DateTimeField(auto_now=True)
 
     def __str__(self):
         return self.name
 
-
+# ---------------------------------------------------------------------
+#  Recipe
+# ---------------------------------------------------------------------
 class Recipe(models.Model):
     menu_item   = models.ForeignKey(MenuItem, on_delete=models.CASCADE)
     ingredients = models.ManyToManyField(Ingredient, through="RecipeIngredient")
     steps       = models.TextField()
+    created_at  = models.DateTimeField(auto_now_add=True)
+    updated_at  = models.DateTimeField(auto_now=True)
 
     def __str__(self):
         return f"Recipe for {self.menu_item.name}"
 
-
+# ---------------------------------------------------------------------
+#  RecipeIngredient
+# ---------------------------------------------------------------------
 class RecipeIngredient(models.Model):
-    recipe     = models.ForeignKey(Recipe, on_delete=models.CASCADE)
-    ingredient = models.ForeignKey(Ingredient, on_delete=models.CASCADE)
-    quantity   = models.CharField(max_length=50)  # e.g. “2 tbsp”
+    recipe      = models.ForeignKey(Recipe, on_delete=models.CASCADE)
+    ingredient  = models.ForeignKey(Ingredient, on_delete=models.CASCADE)
+    quantity    = models.CharField(max_length=50)
+    created_at  = models.DateTimeField(auto_now_add=True)
+    updated_at  = models.DateTimeField(auto_now=True)
 
     def __str__(self):
         return f"{self.quantity} of {self.ingredient.name}"
 
-
-
-#  Review  (one rating per user per item)
-
-
+# ---------------------------------------------------------------------
+#  Review
+# ---------------------------------------------------------------------
 class Review(models.Model):
     menu_item  = models.ForeignKey(MenuItem, on_delete=models.CASCADE, related_name="reviews")
     user       = models.ForeignKey(settings.AUTH_USER_MODEL, on_delete=models.CASCADE)
@@ -87,10 +94,9 @@ class Review(models.Model):
     def __str__(self):
         return f"{self.user} → {self.menu_item} ({self.rating})"
 
-
-
-
-#  SpecialOffer  (time‑bound discount for a dish)
+# ---------------------------------------------------------------------
+#  SpecialOffer
+# ---------------------------------------------------------------------
 class SpecialOffer(models.Model):
     menu_item           = models.ForeignKey(MenuItem, on_delete=models.CASCADE, related_name="offers")
     description         = models.CharField(max_length=200)
@@ -98,6 +104,8 @@ class SpecialOffer(models.Model):
                                               validators=[MinValueValidator(0), MaxValueValidator(100)])
     valid_from  = models.DateTimeField()
     valid_until = models.DateTimeField()
+    created_at  = models.DateTimeField(auto_now_add=True)
+    updated_at  = models.DateTimeField(auto_now=True)
 
     class Meta:
         unique_together = ("menu_item", "valid_from", "valid_until")
