@@ -4,7 +4,6 @@ from django.utils.translation import gettext_lazy as _
 
 User = get_user_model()
 
-# ✅ User Signup Serializer
 class UserSignupSerializer(serializers.ModelSerializer):
     password = serializers.CharField(write_only=True, min_length=6)
 
@@ -12,16 +11,35 @@ class UserSignupSerializer(serializers.ModelSerializer):
         model = User
         fields = ['username', 'email', 'phone_number', 'password']
 
+    def validate_username(self, value):
+        if User.objects.filter(username=value).exists():
+            raise serializers.ValidationError("Username already exists.")
+        return value
+
+    def validate_email(self, value):
+        if User.objects.filter(email=value).exists():
+            raise serializers.ValidationError("Email already registered.")
+        return value
+
+    def validate_phone_number(self, value):
+        if User.objects.filter(phone_number=value).exists():
+            raise serializers.ValidationError("Phone number already registered.")
+        return value
+
     def create(self, validated_data):
+        is_active = self.context.get('is_active', True)
         user = User.objects.create_user(
-            username=validated_data['username'],
-            email=validated_data.get('email', ''),
-            phone_number=validated_data.get('phone_number', ''),
-            password=validated_data['password']
-        )
+        username=validated_data['username'],
+        email=validated_data.get('email', ''),
+        phone_number=validated_data.get('phone_number', ''),
+        password=validated_data['password'],
+        is_active=is_active
+    )
         user.generate_otp()
         user.send_otp_email()
         return user
+
+
 
 
 # ✅ OTP-Based Login Serializer (NEW)

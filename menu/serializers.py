@@ -1,4 +1,4 @@
-from datetime import timezone
+from django.utils import timezone
 from rest_framework import serializers
 from .models import (
     Category,
@@ -10,24 +10,20 @@ from .models import (
     SpecialOffer,
 )
 
-
 class CategorySerializer(serializers.ModelSerializer):
     class Meta:
         model = Category
         fields = "__all__"
-
 
 class IngredientSerializer(serializers.ModelSerializer):
     class Meta:
         model = Ingredient
         fields = "__all__"
 
-
 class RecipeIngredientSerializer(serializers.ModelSerializer):
     class Meta:
         model = RecipeIngredient
         fields = "__all__"
-
 
 class RecipeSerializer(serializers.ModelSerializer):
     ingredients = serializers.StringRelatedField(many=True, read_only=True)
@@ -35,7 +31,6 @@ class RecipeSerializer(serializers.ModelSerializer):
     class Meta:
         model = Recipe
         fields = ("id", "menu_item", "ingredients", "steps")
-
 
 class ReviewSerializer(serializers.ModelSerializer):
     user = serializers.StringRelatedField(read_only=True)
@@ -57,10 +52,10 @@ class ReviewSerializer(serializers.ModelSerializer):
         return super().create(validated_data)
 
 class MenuItemSerializer(serializers.ModelSerializer):
-    average_rating = serializers.FloatField(read_only=True)  # Shows average rating (calculated)
-    review_count = serializers.IntegerField(read_only=True)  # Shows number of reviews
-    reviews = ReviewSerializer(many=True, read_only=True)    # Nested list of reviews  
-    active_offer = serializers.SerializerMethodField()        # Shows current active offer
+    average_rating = serializers.SerializerMethodField()
+    review_count   = serializers.SerializerMethodField()
+    reviews        = ReviewSerializer(many=True, read_only=True)
+    active_offer   = serializers.SerializerMethodField()
 
     class Meta:
         model = MenuItem
@@ -73,16 +68,21 @@ class MenuItemSerializer(serializers.ModelSerializer):
             "price",
             "average_rating",
             "review_count",
-            "active_offer",   # Add active_offer to the serialized output
+            "active_offer",
             "reviews",
             "is_available",
         ]
 
+    def get_average_rating(self, obj):
+        reviews = obj.reviews.all()
+        if reviews.exists():
+            return round(sum([r.rating for r in reviews]) / reviews.count(), 2)
+        return 0
+
+    def get_review_count(self, obj):
+        return obj.reviews.count()
+
     def get_active_offer(self, obj):
-        """
-        Returns the first active offer for this menu item, if any.
-        An offer is active if the current time is within the valid date range.
-        """
         offer = obj.offers.filter(
             valid_from__lte=timezone.now(),
             valid_until__gte=timezone.now()
@@ -94,7 +94,8 @@ class MenuItemSerializer(serializers.ModelSerializer):
                 "valid_from": offer.valid_from,
                 "valid_until": offer.valid_until,
             }
-        return None  # No active offer available
+        return None
+
 class SpecialOfferSerializer(serializers.ModelSerializer):
     class Meta:
         model = SpecialOffer

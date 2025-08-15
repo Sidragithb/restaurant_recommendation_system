@@ -22,11 +22,13 @@ def send_email(subject, message, recipient_email):
     server.sendmail(sender_email, recipient_email, msg.as_string())
     server.quit()
 
+
 class CustomUser(AbstractUser):
     phone_number = models.CharField(max_length=15, unique=True, null=True, blank=True)
     email = models.EmailField(unique=True)
     is_verified = models.BooleanField(default=False)
     otp = models.CharField(max_length=6, blank=True, null=True)
+    has_logged_in_before = models.BooleanField(default=False)  # ✅ First-time login check
 
     def generate_otp(self):
         self.otp = str(random.randint(100000, 999999))

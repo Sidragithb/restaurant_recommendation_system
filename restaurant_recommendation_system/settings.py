@@ -46,9 +46,12 @@ INSTALLED_APPS = [
     "order",
     "outlet",
     "recommender",
+    'corsheaders',
+    
 ]
 
 MIDDLEWARE = [
+    'corsheaders.middleware.CorsMiddleware',
     'django.middleware.csrf.CsrfViewMiddleware',  # Keep CSRF enabledn
     "django.middleware.security.SecurityMiddleware",
     "django.contrib.sessions.middleware.SessionMiddleware",
@@ -64,6 +67,7 @@ AUTH_USER_MODEL = 'users.CustomUser'
 
 
 REST_FRAMEWORK = {
+    'EXCEPTION_HANDLER': 'restaurant_recommendation_system.utils.custom_exception_handler',
     'DEFAULT_AUTHENTICATION_CLASSES': [
         'rest_framework_simplejwt.authentication.JWTAuthentication',
         'rest_framework.authentication.SessionAuthentication',
@@ -182,3 +186,10 @@ EMAIL_HOST_PASSWORD = "ggax pzjm uwmf vhgs"  # Replace with your email app passw
 
 # OTP Expiry Time
 OTP_EXPIRY_MINUTES = 10  # Set OTP expiration time in minutes
+
+
+CORS_ALLOWED_ORIGINS = [
+   "http://localhost:3000",
+]
+
+CORS_ALLOW_ALL_ORIGINS = True

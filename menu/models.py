@@ -6,7 +6,7 @@ from django.utils import timezone
 from django.db.models import Avg, Count
 
 # ---------------------------------------------------------------------
-#  Category  (e.g. Starters, Main Course, Drinks)
+# Category
 # ---------------------------------------------------------------------
 class Category(models.Model):
     name        = models.CharField(max_length=100, unique=True)
@@ -18,7 +18,7 @@ class Category(models.Model):
         return self.name
 
 # ---------------------------------------------------------------------
-#  MenuItem  (one dish on the menu)
+# MenuItem
 # ---------------------------------------------------------------------
 class MenuItem(models.Model):
     category     = models.ForeignKey(Category, on_delete=models.CASCADE)
@@ -42,7 +42,7 @@ class MenuItem(models.Model):
         return self.name
 
 # ---------------------------------------------------------------------
-#  Ingredient
+# Ingredient
 # ---------------------------------------------------------------------
 class Ingredient(models.Model):
     name        = models.CharField(max_length=100, unique=True)
@@ -53,7 +53,7 @@ class Ingredient(models.Model):
         return self.name
 
 # ---------------------------------------------------------------------
-#  Recipe
+# Recipe
 # ---------------------------------------------------------------------
 class Recipe(models.Model):
     menu_item   = models.ForeignKey(MenuItem, on_delete=models.CASCADE)
@@ -66,7 +66,7 @@ class Recipe(models.Model):
         return f"Recipe for {self.menu_item.name}"
 
 # ---------------------------------------------------------------------
-#  RecipeIngredient
+# RecipeIngredient
 # ---------------------------------------------------------------------
 class RecipeIngredient(models.Model):
     recipe      = models.ForeignKey(Recipe, on_delete=models.CASCADE)
@@ -79,7 +79,7 @@ class RecipeIngredient(models.Model):
         return f"{self.quantity} of {self.ingredient.name}"
 
 # ---------------------------------------------------------------------
-#  Review
+# Review
 # ---------------------------------------------------------------------
 class Review(models.Model):
     menu_item  = models.ForeignKey(MenuItem, on_delete=models.CASCADE, related_name="reviews")
@@ -95,13 +95,15 @@ class Review(models.Model):
         return f"{self.user} → {self.menu_item} ({self.rating})"
 
 # ---------------------------------------------------------------------
-#  SpecialOffer
+# SpecialOffer
 # ---------------------------------------------------------------------
 class SpecialOffer(models.Model):
     menu_item           = models.ForeignKey(MenuItem, on_delete=models.CASCADE, related_name="offers")
     description         = models.CharField(max_length=200)
-    discount_percentage = models.DecimalField(max_digits=5, decimal_places=2,
-                                              validators=[MinValueValidator(0), MaxValueValidator(100)])
+    discount_percentage = models.DecimalField(
+        max_digits=5, decimal_places=2,
+        validators=[MinValueValidator(0), MaxValueValidator(100)]
+    )
     valid_from  = models.DateTimeField()
     valid_until = models.DateTimeField()
     created_at  = models.DateTimeField(auto_now_add=True)
